@@ -36,7 +36,7 @@ extern "C" {
  * content and the partitions can be swapped. MUST be called before the next
  * reboot, otherwise data from the download slot will be lost.
  */
-void pfb_mark_download_slot_as_valid(void);
+void pfb_mark_download_slot_as_valid(uint32_t size);
 
 /**
  * Marks the download slot as invalid, i.e. download slot no longer contains
@@ -86,17 +86,7 @@ int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
  *         @ref PFB_WITH_IMAGE_ENCRYPTION is defined,
  *         0 otherwise.
  */
-int pfb_initialize_download_slot(void);
-
-/**
- * Initializes a single sector of ownload slot, i.e. erases the flash sector.
- * MUST be called before writing data into that offset.
- * Will only erase the sector if offset_bytes is a boundary of FLASH_SECTOR.
- * Otherwise we assume it has already been erased in sequence.
- *
- * @return 0 on success where an erase happened, 1 if the address was not boundary
- */
-int pfb_initialize_download_sector(size_t offset_bytes);
+int pfb_initialize_download_slot(uint32_t size);
 
 
 /**

@@ -58,12 +58,15 @@ void _pfb_mark_is_not_after_rollback(void);
 bool _pfb_should_rollback(void);
 void _pfb_mark_should_rollback(void);
 bool _pfb_has_firmware_to_swap(void);
+uint32_t _pfb_firmware_swap_size(void);
 
 static void swap_images(void) {
     uint8_t swap_buff_from_downlaod_slot[FLASH_SECTOR_SIZE];
     uint8_t swap_buff_from_application_slot[FLASH_SECTOR_SIZE];
-    const uint32_t SWAP_ITERATIONS =
-            PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH) / FLASH_SECTOR_SIZE;
+    uint32_t swap_size = _pfb_firmware_swap_size();
+    if (swap_size == 0 || swap_size > PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH)) swap_size = PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH);
+    printf("SWAPPING %d bytes\n",swap_size);
+    const uint32_t SWAP_ITERATIONS = swap_size / FLASH_SECTOR_SIZE;
 
     uint32_t saved_interrupts = save_and_disable_interrupts();
     for (uint32_t i = 0; i < SWAP_ITERATIONS; i++) {
@@ -249,7 +252,7 @@ int main(void) {
                 len = len - ((int32_t)data - (int32_t)g_ethernet_buf);
                 printf("POST got %d bytes\n",len);
                 printf("Initializing download slot\n");
-                pfb_initialize_download_slot();
+                pfb_initialize_download_slot(0);
 
                 int received = len;
                 int upload_done = 0;
@@ -294,7 +297,7 @@ int main(void) {
                 {
                     printf("SHA PASSED GETTING READY TO REBOOT AND UPDATE!!!!\n");
                     sleep_ms(100);
-                    pfb_mark_download_slot_as_valid();
+                    pfb_mark_download_slot_as_valid(0);
                     pfb_perform_update();
                     
                 }

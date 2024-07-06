@@ -102,6 +102,12 @@ static void mark_download_slot(uint32_t magic) {
     overwrite_4_bytes_in_flash(dest_addr, magic);
 }
 
+static void mark_download_size(uint32_t size) {
+    uint32_t dest_addr = PFB_ADDR_AS_U32(__FLASH_INFO_SWAP_SIZE);
+
+    overwrite_4_bytes_in_flash(dest_addr, size);
+}
+
 static void notify_pico_about_firmware(uint32_t magic) {
     uint32_t dest_addr = PFB_ADDR_AS_U32(__FLASH_INFO_IS_FIRMWARE_SWAPPED);
 
@@ -139,8 +145,12 @@ static int decrypt_256_bytes(const uint8_t *src, uint8_t *out_dest) {
 }
 #endif // PFB_WITH_IMAGE_ENCRYPTION
 
-void pfb_mark_download_slot_as_valid(void) {
+void pfb_mark_download_slot_as_valid(uint32_t swap_len) {
+    if (swap_len==0 || swap_len>PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH)) swap_len = PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH);
+    swap_len = (swap_len+FLASH_SECTOR_SIZE-1)/FLASH_SECTOR_SIZE*FLASH_SECTOR_SIZE;
+    mark_download_size(swap_len);
     mark_download_slot(PFB_SHOULD_SWAP_MAGIC);
+
 }
 
 void pfb_mark_download_slot_as_invalid(void) {
@@ -184,19 +194,10 @@ int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
     return 0;
 }
 
-int pfb_initialize_download_sector(size_t offset_bytes)
-{
-    uint32_t erase_address_with_xip_offset =
-            PFB_ADDR_WITH_XIP_OFFSET_AS_U32(__FLASH_DOWNLOAD_SLOT_START);
-    if (offset_bytes % FLASH_SECTOR_SIZE) return 1;
-    uint32_t saved_interrupts = save_and_disable_interrupts();
-    flash_range_erase(erase_address_with_xip_offset+offset_bytes, FLASH_SECTOR_SIZE);
-    restore_interrupts(saved_interrupts);
-    return 0;
-}
-
-int pfb_initialize_download_slot(void) {
-    uint32_t erase_len = PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH);
+int pfb_initialize_download_slot(uint32_t erase_len) {
+    if (erase_len==0 || erase_len>PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH)) erase_len = PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH);
+    erase_len = (erase_len+FLASH_SECTOR_SIZE-1)/FLASH_SECTOR_SIZE*FLASH_SECTOR_SIZE;
+    
     uint32_t erase_address_with_xip_offset =
             PFB_ADDR_WITH_XIP_OFFSET_AS_U32(__FLASH_DOWNLOAD_SLOT_START);
     assert(erase_len % FLASH_SECTOR_SIZE == 0);
@@ -299,6 +300,11 @@ bool _pfb_should_rollback(void) {
 bool _pfb_has_firmware_to_swap(void) {
     return (__FLASH_INFO_IS_DOWNLOAD_SLOT_VALID == PFB_SHOULD_SWAP_MAGIC);
 }
+
+uint32_t _pfb_firmware_swap_size(void) {
+    return (__FLASH_INFO_SWAP_SIZE);
+}
+
 
 void _pfb_mark_pico_has_new_firmware(void) {
     notify_pico_about_firmware(PFB_HAS_NEW_FIRMWARE_MAGIC);
