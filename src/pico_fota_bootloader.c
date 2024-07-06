@@ -160,7 +160,7 @@ int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
         return 1;
     }
 
-    for (int i = 0; i < len_bytes / PFB_ALIGN_SIZE; i++) {
+    for (int i = 0; i < (int)len_bytes / PFB_ALIGN_SIZE; i++) {
 #ifdef PFB_WITH_IMAGE_ENCRYPTION
         unsigned char output_aes_dec[PFB_ALIGN_SIZE];
         int ret = decrypt_256_bytes(src + i * PFB_ALIGN_SIZE, output_aes_dec);
@@ -184,6 +184,17 @@ int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
     return 0;
 }
 
+int pfb_initialize_download_sector(size_t offset_bytes)
+{
+    uint32_t erase_address_with_xip_offset =
+            PFB_ADDR_WITH_XIP_OFFSET_AS_U32(__FLASH_DOWNLOAD_SLOT_START);
+    if (offset_bytes % FLASH_SECTOR_SIZE) return 1;
+    uint32_t saved_interrupts = save_and_disable_interrupts();
+    flash_range_erase(erase_address_with_xip_offset+offset_bytes, FLASH_SECTOR_SIZE);
+    restore_interrupts(saved_interrupts);
+    return 0;
+}
+
 int pfb_initialize_download_slot(void) {
     uint32_t erase_len = PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH);
     uint32_t erase_address_with_xip_offset =
@@ -199,7 +210,7 @@ int pfb_initialize_download_slot(void) {
 #ifdef PFB_WITH_IMAGE_ENCRYPTION
     mbedtls_aes_free(&g_aes_ctx);
     mbedtls_aes_init(&g_aes_ctx);
-    int ret = mbedtls_aes_setkey_dec(&g_aes_ctx, PFB_AES_KEY,
+    int ret = mbedtls_aes_setkey_dec(&g_aes_ctx, (const unsigned char*)PFB_AES_KEY,
                                      strlen(PFB_AES_KEY) * 8);
     if (ret) {
         return ret;

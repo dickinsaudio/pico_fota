@@ -126,7 +126,14 @@ target_link_libraries(pico_fota_bootloader
                       hardware_structs
                       hardware_resets
                       pico_fota_bootloader_lib
-                      cmsis_core)
+                      cmsis_core
+                      hardware_spi
+                      hardware_dma
+                      hardware_clocks
+                      ETHERNET_FILES
+                      IOLIBRARY_FILES
+                      DHCP_FILES
+                      )
 
 function (target_compile_link_options Name Option)
     target_compile_options(${Name} PRIVATE ${Option})

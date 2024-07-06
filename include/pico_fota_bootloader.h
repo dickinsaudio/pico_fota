@@ -89,6 +89,17 @@ int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
 int pfb_initialize_download_slot(void);
 
 /**
+ * Initializes a single sector of ownload slot, i.e. erases the flash sector.
+ * MUST be called before writing data into that offset.
+ * Will only erase the sector if offset_bytes is a boundary of FLASH_SECTOR.
+ * Otherwise we assume it has already been erased in sequence.
+ *
+ * @return 0 on success where an erase happened, 1 if the address was not boundary
+ */
+int pfb_initialize_download_sector(size_t offset_bytes);
+
+
+/**
  * Performs the firmware update. Reboots the Pico and checks if the partitions
  * should be swapped.
  */
