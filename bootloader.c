@@ -29,6 +29,7 @@
 #include <hardware/resets.h>
 #include <hardware/sync.h>
 #include <pico/stdlib.h>
+#include "pico/unique_id.h"
 
 #include <pico_fota_bootloader.h>
 
@@ -65,11 +66,14 @@ static void swap_images(void) {
     uint8_t swap_buff_from_application_slot[FLASH_SECTOR_SIZE];
     uint32_t swap_size = _pfb_firmware_swap_size();
     if (swap_size == 0 || swap_size > PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH)) swap_size = PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH);
-    printf("SWAPPING %d bytes\n",swap_size);
+    printf("SWAPPING %ld bytes\n",swap_size);
     const uint32_t SWAP_ITERATIONS = swap_size / FLASH_SECTOR_SIZE;
 
     uint32_t saved_interrupts = save_and_disable_interrupts();
     for (uint32_t i = 0; i < SWAP_ITERATIONS; i++) {
+
+        gpio_put(25,i & 0x02);
+
         memcpy(swap_buff_from_downlaod_slot,
                (void *) (PFB_ADDR_AS_U32(__FLASH_DOWNLOAD_SLOT_START)
                          + i * FLASH_SECTOR_SIZE),
@@ -145,12 +149,9 @@ static void print_welcome_message(void) {
 static char page_recover[] = 
 "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>DA Dongle</title></head><body>"
 "<h1>SYSTEM RECOVERY</h1>"
-"Bootloader interrupted.  Would be running non-committed or rollback firmware.<br><br>"
-"If device is no longer booting, it is likely that power was interrupted<br>"
-"during the last device firmware update or rollback.<br><br>"
-"A new firmware can be loaded here.  This will take about 2 minutes.<br><br>"
-"New firmware should boot successfully, after which refresh this page or<br>"
-"return to main pages.<br><br>"
+"Booted in recovery mode.  A new firmware can be loaded here.<br><br>"
+"This will take about 2 minutes.<br><br>"
+"New firmware should boot successfully, after which refresh this page.<br><br>"
 "<input type=\"file\" id=\"input\" onchange=\"upload()\"><br><br>"
 "  <script>"
 "      function upload() {"
@@ -171,13 +172,42 @@ static char page_recover[] =
 
 
 int main(void) {
+    sleep_ms(10);
+    
+    // Setup the I2S pins to be stable
+    gpio_init_mask(0x3C);
+    gpio_set_dir_all_bits(0x3C);
+    gpio_put_all(0x00);
+
+    // Setup the reset button
+    gpio_init(0);
+    gpio_init(8);
+    gpio_set_dir(0, GPIO_IN);
+    gpio_set_dir(8, GPIO_IN);
+    gpio_set_pulls(0, true, false);
+    gpio_set_pulls(8, true, false);
+    sleep_ms(10);
+
+    bool recover = !gpio_get(0) || !gpio_get(8);
+    if (recover) {
+        // Code to execute if any single one of the bits in the mask 0xC3 is zero ignoring all other bits, which may be 1 or 0
+        gpio_init(25);
+        gpio_set_dir(25, GPIO_OUT);
+        for (int n=0; n<10; n++) { gpio_put(25, 1); sleep_ms(200); gpio_put(25, 0); sleep_ms(200); }
+
+        recover = !gpio_get(0) || !gpio_get(8);
+    }
+
     stdio_init_all();
-    sleep_ms(2000);
+    gpio_init(25);
+    gpio_set_dir(25, GPIO_OUT);
+
+    sleep_ms(20);
 
     print_welcome_message();
 
-    #define WAIT (2000000)
-    if (_pfb_should_rollback() || _pfb_has_firmware_to_swap() || pfb_is_after_firmware_update() || pfb_is_after_rollback())
+
+    if (recover)                            // TODO CHECK FOR BUTTON PRESS HERE
     {
 
         puts("RUNNING A RECOVERY MINIMAL WEB SERVER");
@@ -185,6 +215,7 @@ int main(void) {
         wizchip_spi_initialize();           // NOTE MAKE SURE TO PATCH THIS TO BE 36Mhz not 5Mhz SPI
         wizchip_reset();
         wizchip_initialize();               // NOTE This routine will wait for a PHY link
+
         wizchip_check();
 
         static uint8_t g_ethernet_buf[2048] = {};
@@ -195,10 +226,24 @@ int main(void) {
                                 .dns = {8, 8, 8, 8},
                                 .dhcp = NETINFO_STATIC };
 
+        pico_unique_board_id_t  id;
+        pico_get_unique_board_id(&id);   // Put the unique ID into the flash structure
+
+        net_info.mac[0] = 0x00;          
+        net_info.mac[1] = 0x08;      
+        net_info.mac[2] = 0xDC;          
+        net_info.mac[3] = id.id[5];  
+        net_info.mac[4] = id.id[6];  
+        net_info.mac[5] = id.id[7];
+
+        setSHAR(net_info.mac);       // Set the MAC address
+    
+
+        printf("MAC ADDRESS        %02X:%02X:%02X:%02X:%02X:%02X\n", net_info.mac[0], net_info.mac[1], net_info.mac[2], net_info.mac[3], net_info.mac[4], net_info.mac[5]);
         puts("ATTEMPTING DHCP");
 
         int wait=0;
-        for (int tries=0; tries<10; tries++)
+        for (int tries=0; tries<5; tries++)
         {
             puts("ATTEMPT");
             wait = 20;
@@ -214,18 +259,17 @@ int main(void) {
 
         if (wait==0)                                                // And if that fails, use the default zero config using the unique id
         {
+            printf("DHCP FAILED - USING STATIC");
             network_initialize(net_info);
         }
 
         ctlnetwork(CN_GET_NETINFO, (void *)&net_info);
 
         printf("IP ADDRESS        %d.%d.%d.%d\n",   net_info.ip[0], net_info.ip[1], net_info.ip[2], net_info.ip[3]);
+        printf("WAITING FOR CONNECTIONS\n");
 
-        int64_t start = time_us_64();
-        bool    contact = false;
-        while( (time_us_64()-start < WAIT) || contact)
+        while(1)
         {
-            printf("Waiting for a connection...\n");
             socket(1, Sn_MR_TCP, 80,0x00);
             listen(1);
             int wait = time_us_64();
@@ -236,23 +280,21 @@ int main(void) {
             if (len>(int)sizeof(g_ethernet_buf)) len = sizeof(g_ethernet_buf)-1;
             len = recv(1, g_ethernet_buf, len);
             g_ethernet_buf[len] = 0;
-            if (strstr((char *)g_ethernet_buf, "GET /recover") != NULL)     
+            if (strstr((char *)g_ethernet_buf, "GET") != NULL)     
             {
                 send(1, (uint8_t *)page_recover, sizeof(page_recover));
                 printf("Sent page\n");
                 sleep_ms(100);
                 setSn_CR(1,Sn_CR_DISCON);        // A healthy disconnect
                 sleep_ms(100);
-                close(1);
-                contact = true;
             }
             else if (strstr((char *)g_ethernet_buf, "POST") != NULL)     
             {
                 char *data = strstr((char *)g_ethernet_buf, "\r\n\r\n") + 4;
                 len = len - ((int32_t)data - (int32_t)g_ethernet_buf);
                 printf("POST got %d bytes\n",len);
-                printf("Initializing download slot\n");
-                pfb_initialize_download_slot(0);
+                printf("Initializing download slot and downloading\n");
+                pfb_initialize_download_slot();
 
                 int received = len;
                 int upload_done = 0;
@@ -281,6 +323,7 @@ int main(void) {
                         len = getSn_RX_RSR(1);
                         if (len>0)
                         {
+                            gpio_put(25, !gpio_get(25));                        
                             if (len>(int)sizeof(g_ethernet_buf)) len = sizeof(g_ethernet_buf)-1;
                             len = recv(1, g_ethernet_buf, len);
                             data = (char *)g_ethernet_buf;
@@ -289,20 +332,26 @@ int main(void) {
                         }
                     }
                 }
+        
                 // Will end when the socket closes or there is no more data coming
                 printf("Firmware flash complete  DONE %d\n",upload_done);
                 int ret_sha256 = pfb_firmware_sha256_check(upload_done);
-                if (ret_sha256) printf("FAILED THE SHA TEST\n");
+                if (ret_sha256) { printf("FAILED THE SHA TEST\n"); }
                 else
                 {
-                    printf("SHA PASSED GETTING READY TO REBOOT AND UPDATE!!!!\n");
-                    sleep_ms(100);
-                    pfb_mark_download_slot_as_valid(0);
-                    pfb_perform_update();
-                    
+                    printf("SHA PASSED AND NOW SWAPPING IN THIS FIRMWARE!!!!\n");
+                    pfb_mark_download_slot_as_valid(upload_done);   // Swap it in             
+                    swap_images();
+                    pfb_firmware_commit();                          // Commit this - no rollback
+                    _pfb_mark_pico_has_no_new_firmware();           // This is not considered new firmware
+                    _pfb_mark_is_not_after_rollback();              // This is not after a rollback
+                    pfb_mark_download_slot_as_invalid();            // Load slot is invalid
+                    disable_interrupts();
+                    reset_peripherals();
+                    jump_to_vtor(__flash_info_app_vtor);            // Start up the application
                 }
-                close(1);
             }
+            close(1);
         }
     }
 

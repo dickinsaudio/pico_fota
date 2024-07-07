@@ -188,26 +188,16 @@ int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
                 src + i * PFB_ALIGN_SIZE;
 #endif // PFB_WITH_IMAGE_ENCRYPTION
         uint32_t saved_interrupts = save_and_disable_interrupts();
+        if (dest_address % FLASH_SECTOR_SIZE == 0) flash_range_erase(dest_address, PFB_ALIGN_SIZE);
         flash_range_program(dest_address, src_address, PFB_ALIGN_SIZE);
         restore_interrupts(saved_interrupts);
     }
     return 0;
 }
 
-int pfb_initialize_download_slot(uint32_t erase_len) {
-    if (erase_len==0 || erase_len>PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH)) erase_len = PFB_ADDR_AS_U32(__FLASH_SWAP_SPACE_LENGTH);
-    erase_len = (erase_len+FLASH_SECTOR_SIZE-1)/FLASH_SECTOR_SIZE*FLASH_SECTOR_SIZE;
-    
-    uint32_t erase_address_with_xip_offset =
-            PFB_ADDR_WITH_XIP_OFFSET_AS_U32(__FLASH_DOWNLOAD_SLOT_START);
-    assert(erase_len % FLASH_SECTOR_SIZE == 0);
 
+int pfb_initialize_download_slot() {
     pfb_firmware_commit();
-
-    uint32_t saved_interrupts = save_and_disable_interrupts();
-    flash_range_erase(erase_address_with_xip_offset, erase_len);
-    restore_interrupts(saved_interrupts);
-
 #ifdef PFB_WITH_IMAGE_ENCRYPTION
     mbedtls_aes_free(&g_aes_ctx);
     mbedtls_aes_init(&g_aes_ctx);

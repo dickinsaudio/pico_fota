@@ -75,6 +75,9 @@ bool pfb_is_after_firmware_update(void);
 int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
                                          size_t offset_bytes,
                                          size_t len_bytes);
+int pfb_write_to_main_flash_aligned_256_bytes(uint8_t *src,
+                                         size_t offset_bytes,
+                                         size_t len_bytes);
 
 /**
  * Initializes the download slot, i.e. erases the download partition. MUST be
@@ -86,7 +89,7 @@ int pfb_write_to_flash_aligned_256_bytes(uint8_t *src,
  *         @ref PFB_WITH_IMAGE_ENCRYPTION is defined,
  *         0 otherwise.
  */
-int pfb_initialize_download_slot(uint32_t size);
+int pfb_initialize_download_slot();
 
 
 /**
