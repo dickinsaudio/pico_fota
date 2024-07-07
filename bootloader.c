@@ -28,6 +28,7 @@
 #include <hardware/flash.h>
 #include <hardware/resets.h>
 #include <hardware/sync.h>
+#include <hardware/watchdog.h>
 #include <pico/stdlib.h>
 #include "pico/unique_id.h"
 
@@ -166,7 +167,8 @@ static char page_recover[] =
 "              rdr.readAsArrayBuffer(input.files[0]);"
 "          }"
 "      }"
-"  </script>"
+"  </script><br><br>"
+"<button onclick=\"location.href='reboot'\">REBOOT</button>&nbsp;&nbsp"
 "</body></html>";
     
 
@@ -252,6 +254,7 @@ int main(void) {
             {
                 if (DHCP_run() == DHCP_IP_LEASED) break;
                 sleep_ms(100);
+                gpio_put(25, !gpio_get(25));
             }
             DHCP_stop();
             if (wait>0) break;
@@ -273,7 +276,8 @@ int main(void) {
             socket(1, Sn_MR_TCP, 80,0x00);
             listen(1);
             int wait = time_us_64();
-            while (getSn_RX_RSR(1)==0 && (time_us_64()-wait < 1000000) ) sleep_ms(10);
+            while (getSn_RX_RSR(1)==0 && (time_us_64()-wait < 100000) ) sleep_ms(10);
+            gpio_put(25, !gpio_get(25));
             int len = getSn_RX_RSR(1);
             if (len==0) continue;
             printf("Connection received\n");
@@ -282,6 +286,7 @@ int main(void) {
             g_ethernet_buf[len] = 0;
             if (strstr((char *)g_ethernet_buf, "GET") != NULL)     
             {
+                if (strstr((char *)g_ethernet_buf, "reboot") != NULL) { watchdog_reboot(0,0,0); while(1); };
                 send(1, (uint8_t *)page_recover, sizeof(page_recover));
                 printf("Sent page\n");
                 sleep_ms(100);
