@@ -75,6 +75,9 @@ if (PFB_WITH_SHA256_HASHING)
     target_compile_definitions(pico_fota_bootloader_lib PRIVATE PFB_WITH_SHA256_HASHING)
 endif ()
 
+add_definitions(-DPICO_DEFAULT_UART_TX_PIN=12)
+add_definitions(-DPICO_DEFAULT_UART_RX_PIN=13)
+
 set(BOOTLOADER_DIR_GLOBAL ${CMAKE_CURRENT_SOURCE_DIR} PARENT_SCOPE)
 
 ########################################
