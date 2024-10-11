@@ -43,6 +43,10 @@
 
 #include "linker_common/linker_definitions.h"
 
+
+#define LED_PIN 14
+
+
 #ifdef PFB_WITH_BOOTLOADER_LOGS
 #    define BOOTLOADER_LOG(...)                \
         do {                                   \
@@ -73,7 +77,7 @@ static void swap_images(void) {
     uint32_t saved_interrupts = save_and_disable_interrupts();
     for (uint32_t i = 0; i < SWAP_ITERATIONS; i++) {
 
-        gpio_put(25,i & 0x02);
+        gpio_put(LED_PIN,i & 0x02);
 
         memcpy(swap_buff_from_downlaod_slot,
                (void *) (PFB_ADDR_AS_U32(__FLASH_DOWNLOAD_SLOT_START)
@@ -142,6 +146,7 @@ static void print_welcome_message(void) {
 #endif // PFB_WITH_BOOTLOADER_LOGS
 }
 
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // HTML FOR RECOVERY PAGE
 //
@@ -193,16 +198,16 @@ int main(void) {
     bool recover = !gpio_get(0) || !gpio_get(8);
     if (recover) {
         // Code to execute if any single one of the bits in the mask 0xC3 is zero ignoring all other bits, which may be 1 or 0
-        gpio_init(25);
-        gpio_set_dir(25, GPIO_OUT);
-        for (int n=0; n<10; n++) { gpio_put(25, 1); sleep_ms(200); gpio_put(25, 0); sleep_ms(200); }
+        gpio_init(LED_PIN);
+        gpio_set_dir(LED_PIN, GPIO_OUT);
+        for (int n=0; n<10; n++) { gpio_put(LED_PIN, 1); sleep_ms(200); gpio_put(LED_PIN, 0); sleep_ms(200); }
 
         recover = !gpio_get(0) || !gpio_get(8);
     }
 
     stdio_init_all();
-    gpio_init(25);
-    gpio_set_dir(25, GPIO_OUT);
+    gpio_init(LED_PIN);
+    gpio_set_dir(LED_PIN, GPIO_OUT);
 
     sleep_ms(20);
 
@@ -254,7 +259,7 @@ int main(void) {
             {
                 if (DHCP_run() == DHCP_IP_LEASED) break;
                 sleep_ms(100);
-                gpio_put(25, !gpio_get(25));
+                gpio_put(LED_PIN, !gpio_get(LED_PIN));
             }
             DHCP_stop();
             if (wait>0) break;
@@ -277,7 +282,7 @@ int main(void) {
             listen(1);
             int wait = time_us_64();
             while (getSn_RX_RSR(1)==0 && (time_us_64()-wait < 100000) ) sleep_ms(10);
-            gpio_put(25, !gpio_get(25));
+            gpio_put(LED_PIN, !gpio_get(LED_PIN));
             int len = getSn_RX_RSR(1);
             if (len==0) continue;
             printf("Connection received\n");
@@ -328,7 +333,7 @@ int main(void) {
                         len = getSn_RX_RSR(1);
                         if (len>0)
                         {
-                            gpio_put(25, !gpio_get(25));                        
+                            gpio_put(LED_PIN, !gpio_get(LED_PIN));                        
                             if (len>(int)sizeof(g_ethernet_buf)) len = sizeof(g_ethernet_buf)-1;
                             len = recv(1, g_ethernet_buf, len);
                             data = (char *)g_ethernet_buf;
