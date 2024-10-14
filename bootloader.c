@@ -215,6 +215,9 @@ int main(void) {
 
     print_welcome_message();
 
+    printf("RP2040 BOOTLOADER\n");
+    printf("GIT BRANCH          %s-%s\n\n",GIT_BRANCH, GIT_COMMIT_HASH);
+    
 
     if (recover)                            // TODO CHECK FOR BUTTON PRESS HERE
     {
