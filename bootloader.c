@@ -153,6 +153,8 @@ static void print_welcome_message(void) {
 // A bit of info, and most importantly a file upload form using a POST.
 //
 static char page_recover[] = 
+"HTTP/1.1 200 OK\r\nContent-Type: HTML\r\n"
+"Content-Length: 983\r\n\r\n"
 "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><title>DA Dongle</title></head><body>"
 "<h1>SYSTEM RECOVERY</h1>"
 "Booted in recovery mode.  A new firmware can be loaded here.<br><br>"
@@ -174,7 +176,7 @@ static char page_recover[] =
 "      }"
 "  </script><br><br>"
 "<button onclick=\"location.href='reboot'\">REBOOT</button>&nbsp;&nbsp"
-"</body></html>";
+"</body></html>\r\n\r\n";
     
 
 
@@ -280,25 +282,29 @@ int main(void) {
         {
             socket(1, Sn_MR_TCP, 80,0x00);
             listen(1);
-            int wait = time_us_64();
-            while (getSn_RX_RSR(1)==0 && (time_us_64()-wait < 100000) ) sleep_ms(10);
-            gpio_put(LED_PIN, !gpio_get(LED_PIN));
+            for (int n=0; n<200 && getSn_RX_RSR(1)==0; n++)                                  // Wait 5s so that we coul use a telnet test to check
+            {
+                int wait = time_us_64();
+                while ( getSn_RX_RSR(1)==0 && time_us_64()-wait < 100000) sleep_ms(10);
+                gpio_put(LED_PIN, !gpio_get(LED_PIN));
+            }
             int len = getSn_RX_RSR(1);
             if (len==0) continue;
             printf("Connection received\n");
             if (len>(int)sizeof(g_ethernet_buf)) len = sizeof(g_ethernet_buf)-1;
             len = recv(1, g_ethernet_buf, len);
             g_ethernet_buf[len] = 0;
-            if (strstr((char *)g_ethernet_buf, "GET") != NULL)     
+            if (strstr((char *)g_ethernet_buf, "GET") != NULL || strstr((char *)g_ethernet_buf, "get") != NULL)     
             {
-                if (strstr((char *)g_ethernet_buf, "reboot") != NULL) { watchdog_reboot(0,0,0); while(1); };
+                if (strstr((char *)g_ethernet_buf, "REBOOT") != NULL || strstr((char *)g_ethernet_buf, "reboot") != NULL) 
+                { watchdog_reboot(0,0,0); while(1); };
                 send(1, (uint8_t *)page_recover, sizeof(page_recover));
                 printf("Sent page\n");
-                sleep_ms(100);
+                sleep_ms(20);
                 setSn_CR(1,Sn_CR_DISCON);        // A healthy disconnect
-                sleep_ms(100);
+                sleep_ms(20);
             }
-            else if (strstr((char *)g_ethernet_buf, "POST") != NULL)     
+            else if (strstr((char *)g_ethernet_buf, "POST") != NULL || strstr((char *)g_ethernet_buf, "post") != NULL)     
             {
                 char *data = strstr((char *)g_ethernet_buf, "\r\n\r\n") + 4;
                 len = len - ((int32_t)data - (int32_t)g_ethernet_buf);
