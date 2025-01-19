@@ -44,7 +44,7 @@
 #include "linker_common/linker_definitions.h"
 
 
-#define LED_PIN 14
+#define LED_PIN (PICO_DEFAULT_LED_PIN)
 
 
 #ifdef PFB_WITH_BOOTLOADER_LOGS
@@ -183,54 +183,50 @@ static char page_recover[] =
 int main(void) {
     sleep_ms(10);
     
-    // Setup the I2S pins to be stable
-    gpio_init_mask(0x3C);
-    gpio_set_dir_all_bits(0x3C);
-    gpio_put_all(0x00);
-
     // Setup the reset button
-    gpio_init(0);
-    gpio_init(8);
-    gpio_set_dir(0, GPIO_IN);
-    gpio_set_dir(8, GPIO_IN);
-    gpio_set_pulls(0, true, false);
-    gpio_set_pulls(8, true, false);
-    sleep_ms(10);
+    gpio_init(PICO_BUTTON_0);
+    gpio_set_dir(PICO_BUTTON_0, GPIO_IN);
+    gpio_set_pulls(PICO_BUTTON_0, true, false);
 
-    bool recover = !gpio_get(0) || !gpio_get(8);
-    if (recover) {
-        // Code to execute if any single one of the bits in the mask 0xC3 is zero ignoring all other bits, which may be 1 or 0
-        gpio_init(LED_PIN);
-        gpio_set_dir(LED_PIN, GPIO_OUT);
-        for (int n=0; n<10; n++) { gpio_put(LED_PIN, 1); sleep_ms(200); gpio_put(LED_PIN, 0); sleep_ms(200); }
-
-        recover = !gpio_get(0) || !gpio_get(8);
-    }
-
-    stdio_init_all();
+    // Setup the LED
     gpio_init(LED_PIN);
     gpio_set_dir(LED_PIN, GPIO_OUT);
+    gpio_put(LED_PIN, 1);
 
-    sleep_ms(20);
+    stdio_init_all();
+    sleep_ms(10);
 
     print_welcome_message();
 
     printf("RP2040 BOOTLOADER\n");
-    printf("GIT BRANCH          %s-%s\n\n",GIT_BRANCH, GIT_COMMIT_HASH);
-    
+    printf("GIT INFO     %7s %-12s %s\n",GIT_COMMIT_HASH, GIT_BRANCH, GIT_TAG);
+
+    bool recover = !gpio_get(PICO_BUTTON_0);
+    if (recover) 
+    {
+        printf("BUTTON PRESS\n");
+        for (int n=0; n<10; n++) { gpio_put(LED_PIN, 1); sleep_ms(200); gpio_put(LED_PIN, 0); sleep_ms(200); }
+        recover = !gpio_get(PICO_BUTTON_0);
+        if (recover) printf("BUTTON HELD - ENTER RECOVERY MODE\n");
+        else         printf("BUTTON RELEASED - NORMAL BOOT\n");
+    }
+
+
+    sleep_ms(20);
 
     if (recover)                            // TODO CHECK FOR BUTTON PRESS HERE
     {
 
         puts("RUNNING A RECOVERY MINIMAL WEB SERVER");
-
         wizchip_spi_initialize();           // NOTE MAKE SURE TO PATCH THIS TO BE 36Mhz not 5Mhz SPI
+        printf("SPI INITIALIZED\n");
         wizchip_reset();
+        printf("WIZCHIP RESET - WAITING FOR PHY LINK\n");
         wizchip_initialize();               // NOTE This routine will wait for a PHY link
-
+        printf("WIZCHIP INITIALIZED\n");
         wizchip_check();
 
-        static uint8_t g_ethernet_buf[2048] = {};
+        static uint8_t g_ethernet_buf[2048] __attribute__((aligned(4))) = {};
         wiz_NetInfo net_info = { .mac = {0x00, 0x08, 0xDC, 0x12, 0x34, 0x56},
                                 .ip = {192, 168, 0, 100},
                                 .sn = {255, 255, 255, 0},
@@ -252,30 +248,32 @@ int main(void) {
     
 
         printf("MAC ADDRESS        %02X:%02X:%02X:%02X:%02X:%02X\n", net_info.mac[0], net_info.mac[1], net_info.mac[2], net_info.mac[3], net_info.mac[4], net_info.mac[5]);
-        puts("ATTEMPTING DHCP");
 
         int wait=0;
-        for (int tries=0; tries<5; tries++)
+        for (int tries=0; tries<10; tries++)
         {
-            puts("ATTEMPT");
+            printf("DHCP ATTEMPT %2d / %2d   ",tries+1,10);
             wait = 20;
             DHCP_init(1, g_ethernet_buf);       // Use socket 1
             for (; wait>0; wait--) 
             {
                 if (DHCP_run() == DHCP_IP_LEASED) break;
                 sleep_ms(100);
+                printf(".");
                 gpio_put(LED_PIN, !gpio_get(LED_PIN));
             }
             DHCP_stop();
+            printf("\n");
             if (wait>0) break;
         }
-
+        puts("DHCP DONE");
         if (wait==0)                                                // And if that fails, use the default zero config using the unique id
         {
             printf("DHCP FAILED - USING STATIC");
             network_initialize(net_info);
         }
 
+        puts("NETWORK INITIALIZED");
         ctlnetwork(CN_GET_NETINFO, (void *)&net_info);
 
         printf("IP ADDRESS        %d.%d.%d.%d\n",   net_info.ip[0], net_info.ip[1], net_info.ip[2], net_info.ip[3]);
