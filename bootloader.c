@@ -199,7 +199,7 @@ int main(void) {
     print_welcome_message();
 
     printf("RP2040 BOOTLOADER\n");
-    printf("GIT INFO     %7s %-12s %s\n",GIT_COMMIT_HASH, GIT_BRANCH, GIT_TAG);
+    printf("GIT INFO     %7s %-12s %s\n",GIT_HASH, GIT_BRANCH, GIT_TAG);
 
     bool recover = !gpio_get(PICO_BUTTON_0);
     if (recover) 
